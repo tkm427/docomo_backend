@@ -2,8 +2,8 @@ from chalice import Chalice, BadRequestError, Response, CORSConfig, NotFoundErro
 import boto3
 import uuid
 import bcrypt
-from boto3.dynamodb.conditions import Attr
-import datetime
+from boto3.dynamodb.conditions import Attr, Key
+from datetime import datetime
 import random
 
 dynamodb = boto3.resource(
@@ -36,7 +36,7 @@ def create_or_join_session():
         return {"error": "userId is required"}, 400
 
     # Check for available sessions
-    response = sessions_table.scan(FilterExpression=Attr("USERID").size().lt(5))
+    response = sessions_table.scan(FilterExpression=Attr("user_id").size().lt(5))
     available_sessions = response["Items"]
 
     if not available_sessions:
@@ -45,51 +45,51 @@ def create_or_join_session():
         theme = get_random_theme()
         sessions_table.put_item(
             Item={
-                "ID": session_id,
-                "THEMEID": theme["ID"],
-                "USERID": [user_id],  # First user
-                "ISEND": False,
+                "id": session_id,
+                "theme_id": theme["id"],
+                "user_id": [user_id],  # First user
+                "is_end": False,
                 "作成日": datetime.now().isoformat(),
-                "ZOOMURL": "",
+                "zoom_url": "",
             }
         )
         response_body = {
             "sessionId": session_id,
             "userCount": 1,
             "message": "New session created",
-            "theme": theme["CONTENT"],
+            "theme": theme["content"],
         }
         return Response(body=response_body, status_code=201, headers={})
     else:
         # Join existing session
         session = available_sessions[0]
-        if user_id in session["USERID"]:
+        if user_id in session["user_id"]:
             response_body = {
-                "sessionId": session["ID"],
-                "userCount": len(session["USERID"]),
+                "sessionId": session["id"],
+                "userCount": len(session["user_id"]),
                 "message": "User already in session",
             }
             return Response(body=response_body, status_code=200, headers={})
 
-        session["USERID"].append(user_id)
-        user_count = len(session["USERID"])
+        session["user_id"].append(user_id)
+        user_count = len(session["user_id"])
 
-        update_expression = "SET USERID = :users"
-        expression_values = {":users": session["USERID"]}
+        update_expression = "SET user_id = :users"
+        expression_values = {":users": session["user_id"]}
 
         if user_count == 5:
             # Create Zoom URL and update session
             zoom_url = "test_zoom_url"
-            update_expression += ", ZOOMURL = :zoom"
+            update_expression += ", zoom_url = :zoom"
             expression_values[":zoom"] = zoom_url
 
         sessions_table.update_item(
-            Key={"ID": session["ID"]},
+            Key={"id": session["id"]},
             UpdateExpression=update_expression,
             ExpressionAttributeValues=expression_values,
         )
         response_body = {
-            "sessionId": session["ID"],
+            "sessionId": session["id"],
             "userCount": user_count,
             "message": "Joined existing session",
         }
@@ -112,8 +112,13 @@ def register():
         )
 
     # メールアドレスが既に存在するかチェック
-    existing_user = users_table.get_item(Key={'email': email})
-    if 'Item' in existing_user:
+    response = users_table.query(
+        IndexName="EmailIndex",  # 作成したGSIの名前を指定
+        KeyConditionExpression=Key('email').eq(email)
+    )
+
+    # クエリ結果にデータが存在する場合（既にユーザーが登録されている場合）
+    if response['Items']:
         return Response(
             body={'error': 'このメールアドレスは既に登録されています。'},
             status_code=400,
@@ -137,7 +142,7 @@ def register():
     )
 
     return Response(
-        body={'message': 'ユーザー登録が完了しました。', 'user_id': user_id},
+        body={'message': 'ユーザー登録が完了しました。', 'userId': user_id},
         status_code=201,
         headers=headers
     )
@@ -157,8 +162,14 @@ def login():
         )
 
     # メールアドレスでユーザーを検索
-    response = users_table.get_item(Key={'email': email})
-    user = response.get('Item')
+    response = users_table.query(
+        IndexName="EmailIndex",  # 作成したGSIの名前を指定
+        KeyConditionExpression=Key('email').eq(email)  # Keyオブジェクトを使用してクエリを実行
+    )
+
+    # クエリ結果からユーザー情報を取得
+    user = response['Items'][0] if response['Items'] else None  # ユーザーが存在しない場合はNone
+
 
     if not user:
         return Response(
@@ -176,7 +187,7 @@ def login():
         )
 
     return Response(
-        body={'user_id': user['id']},
+        body={'userId': user['id']},
         status_code=200,
         headers=headers
     )
@@ -194,7 +205,7 @@ def end_session():
     session_id = app.current_request.query_params.get("session_id")
 
     session = sessions_table.get_item(Key={"ID": session_id})["Item"]
-    session["ISEND"] = True
+    session["is_end"] = True
     sessions_table.put_item(Item=session)
     response_body = {"message": "Session ended"}
     return Response(body=response_body, status_code=200, headers=headers)
@@ -208,8 +219,8 @@ def add_theme():
     table = themes_table
     table.put_item(
         Item={
-            "ID": data["id"],
-            "CONTENT": data["content"],
+            "id": data["id"],
+            "content": data["content"],
         }
     )
 
@@ -218,22 +229,22 @@ def add_theme():
 def get_zoom_url(id):
     def get_user_name(id):
         table = users_table
-        response = table.get_item(Key={"ID": id})
+        response = table.get_item(Key={"id": id})
         item = response["Item"]
-        return item["NAME"]
+        return item["name"]
 
     table = sessions_table
-    response = table.get_item(Key={"ID": id})
+    response = table.get_item(Key={"id": id})
     item = response["Item"]
-    if ("ZOOMURL" not in item) or (item["ZOOMURL"] == ""):
+    if ("zoom_url" not in item) or (item["zoom_url"] == ""):
         raise NotFoundError("No Zoom URL")
     else:
-        username = [get_user_name(id) for id in item["USERID"]]
+        username = [get_user_name(id) for id in item["user_id"]]
         return Response(
             body={
-                "zoomUrl": item["ZOOMURL"],
-                "thema": item["THEMA"],
-                "userId": item["USERID"],
+                "zoomUrl": item["zoom_url"],
+                "theme": item["theme"],
+                "userId": item["user_id"],
                 "userName": username,
             },
             status_code=200,
