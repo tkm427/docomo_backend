@@ -49,7 +49,7 @@ def create_or_join_session():
                 "theme_id": theme["id"],
                 "user_id": [user_id],  # First user
                 "is_end": False,
-                "作成日": datetime.now().isoformat(),
+                "date": datetime.now().isoformat(),
                 "zoom_url": "",
             }
         )
