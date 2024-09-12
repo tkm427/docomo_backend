@@ -1,24 +1,24 @@
-from chalice import Chalice, BadRequestError, Response, CORSConfig, NotFoundError
-import boto3
-import uuid
-import bcrypt
-from boto3.dynamodb.conditions import Attr, Key
-from datetime import datetime
-import random
-import requests
-import os
 import base64
-from decimal import Decimal
 import json
+import os
+import random
+import uuid
 from collections import defaultdict
+from datetime import datetime
+from decimal import Decimal
+
+import bcrypt
+import boto3
+import requests
+from boto3.dynamodb.conditions import Attr, Key
+from chalice import BadRequestError, Chalice, CORSConfig, NotFoundError, Response
 
 dynamodb = boto3.resource(
-    "dynamodb", region_name="ap-northeast-1",
-    endpoint_url="http://localhost:8000"
+    "dynamodb", region_name="ap-northeast-1", endpoint_url="http://localhost:8000"
 )
 app = Chalice(app_name="docomo_backend")
 
-headers = {'Content-Type': 'application/json'}
+headers = {"Content-Type": "application/json"}
 
 users_table = dynamodb.Table("Users")
 sessions_table = dynamodb.Table("Sessions")
@@ -31,17 +31,18 @@ ACCOUNT_ID = os.getenv("ZOOM_ACCOUNT_ID")
 
 # CORS設定
 cors_config = CORSConfig(
-    allow_origin='*',
-    allow_headers=['Content-Type', 'Authorization'],
+    allow_origin="*",
+    allow_headers=["Content-Type", "Authorization"],
     max_age=600,
-    expose_headers=['Authorization'], 
-    allow_credentials=True
+    expose_headers=["Authorization"],
+    allow_credentials=True,
 )
+
 
 def create_zoom_meeting():
     # Zoom API エンドポイント
     zoom_api_url = "https://api.zoom.us/v2/users/me/meetings"
-    
+
     # Zoom API アクセストークン発行
     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
     b64_auth_str = base64.b64encode(auth_str.encode()).decode()
@@ -52,27 +53,29 @@ def create_zoom_meeting():
     try:
         response = requests.post(
             f"https://zoom.us/oauth/token?grant_type=account_credentials&account_id={ACCOUNT_ID}",
-            headers=headers
+            headers=headers,
         )
         access_token = response.json()["access_token"]
     except Exception as e:
-        raise BadRequestError(f"Failed to get access token: {e}, status_code: {response.status_code}, json: {response.json()}")
-    
+        raise BadRequestError(
+            f"Failed to get access token: {e}, status_code: {response.status_code}, json: {response.json()}"
+        )
+
     # ミーティング作成のためのデータ
     meeting_details = {
         "topic": "Group Discussion",
         "settings": {
             "join_before_host": True,
-        }
+        },
     }
-    
+
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     response = requests.post(zoom_api_url, headers=headers, json=meeting_details)
-    
+
     if response.status_code == 201:
         meeting_info = response.json()
         return meeting_info["join_url"]
@@ -80,6 +83,7 @@ def create_zoom_meeting():
         print(f"Error: {response.status_code}")
         print(response.json())
         return None
+
 
 @app.route("/session", methods=["POST"], cors=cors_config)
 def create_or_join_session():
@@ -151,36 +155,38 @@ def create_or_join_session():
 
 
 # ユーザー登録
-@app.route('/register', methods=['POST'], cors=cors_config)
+@app.route("/register", methods=["POST"], cors=cors_config)
 def register():
     request = app.current_request.json_body
-    name = request.get('name')
-    email = request.get('email')
-    password = request.get('password')
+    name = request.get("name")
+    email = request.get("email")
+    password = request.get("password")
 
     if not name or not email or not password:
         return Response(
-            body={'error': '名前、メールアドレス、パスワードは必須です。'},
+            body={"error": "名前、メールアドレス、パスワードは必須です。"},
             status_code=400,
-            headers=headers
+            headers=headers,
         )
 
     # メールアドレスが既に存在するかチェック
     response = users_table.query(
         IndexName="EmailIndex",  # 作成したGSIの名前を指定
-        KeyConditionExpression=Key('email').eq(email)
+        KeyConditionExpression=Key("email").eq(email),
     )
 
     # クエリ結果にデータが存在する場合（既にユーザーが登録されている場合）
-    if response['Items']:
+    if response["Items"]:
         return Response(
-            body={'error': 'このメールアドレスは既に登録されています。'},
+            body={"error": "このメールアドレスは既に登録されています。"},
             status_code=400,
-            headers=headers
+            headers=headers,
         )
 
     # パスワードをハッシュ化
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+        "utf-8"
+    )
 
     # IDを生成
     user_id = str(uuid.uuid4())
@@ -188,64 +194,65 @@ def register():
     # ユーザー情報を保存
     users_table.put_item(
         Item={
-            'id': user_id,
-            'name': name,
-            'email': email,
-            'password_hash': password_hash
+            "id": user_id,
+            "name": name,
+            "email": email,
+            "password_hash": password_hash,
         }
     )
 
     return Response(
-        body={'message': 'ユーザー登録が完了しました。', 'userId': user_id},
+        body={"message": "ユーザー登録が完了しました。", "userId": user_id},
         status_code=201,
-        headers=headers
+        headers=headers,
     )
 
+
 # ユーザーログイン
-@app.route('/login', methods=['POST'], cors=cors_config)
+@app.route("/login", methods=["POST"], cors=cors_config)
 def login():
     request = app.current_request.json_body
-    email = request.get('email')
-    password = request.get('password')
+    email = request.get("email")
+    password = request.get("password")
 
     if not email or not password:
         return Response(
-            body={'error': 'メールアドレスとパスワードは必須です。'},
+            body={"error": "メールアドレスとパスワードは必須です。"},
             status_code=400,
-            headers=headers
+            headers=headers,
         )
 
     # メールアドレスでユーザーを検索
     response = users_table.query(
         IndexName="EmailIndex",  # 作成したGSIの名前を指定
-        KeyConditionExpression=Key('email').eq(email)  # Keyオブジェクトを使用してクエリを実行
+        KeyConditionExpression=Key("email").eq(
+            email
+        ),  # Keyオブジェクトを使用してクエリを実行
     )
 
     # クエリ結果からユーザー情報を取得
-    user = response['Items'][0] if response['Items'] else None  # ユーザーが存在しない場合はNone
-
+    user = (
+        response["Items"][0] if response["Items"] else None
+    )  # ユーザーが存在しない場合はNone
 
     if not user:
         return Response(
-            body={'error': 'メールアドレスまたはパスワードが正しくありません。'},
+            body={"error": "メールアドレスまたはパスワードが正しくありません。"},
             status_code=404,
-            headers=headers
+            headers=headers,
         )
 
     # パスワードの確認
-    if not bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+    if not bcrypt.checkpw(
+        password.encode("utf-8"), user["password_hash"].encode("utf-8")
+    ):
         return Response(
-            body={'error': 'メールアドレスまたはパスワードが正しくありません。'},
+            body={"error": "メールアドレスまたはパスワードが正しくありません。"},
             status_code=400,
-            headers=headers
+            headers=headers,
         )
 
-    return Response(
-        body={'userId': user['id']},
-        status_code=200,
-        headers=headers
-    )
-
+    return Response(body={"userId": user["id"]}, status_code=200, headers=headers)
 
 
 def get_random_theme():
@@ -258,7 +265,7 @@ def get_random_theme():
 def end_session():
     session_id = app.current_request.query_params.get("session_id")
 
-    session = sessions_table.get_item(Key={"ID": session_id})["Item"]
+    session = sessions_table.get_item(Key={"id": session_id})["Item"]
     session["is_end"] = True
     sessions_table.put_item(Item=session)
     response_body = {"message": "Session ended"}
@@ -291,7 +298,7 @@ def get_zoom_url(id):
     response = table.get_item(Key={"id": id})
     item = response["Item"]
 
-    theme = themes_table.get_item(Key={'id': item["theme_id"]})
+    theme = themes_table.get_item(Key={"id": item["theme_id"]})
     theme_content = theme["Item"]["content"]
     username = [get_user_name(id) for id in item["user_id"]]
     return Response(
@@ -305,6 +312,7 @@ def get_zoom_url(id):
         headers=headers,
     )
 
+
 @app.route("/feedback", methods=["POST"], cors=cors_config)
 def feedback():
     request = app.current_request
@@ -313,29 +321,35 @@ def feedback():
     table = feedbacks_table
     for user in data["users"].keys():
         feedback_id = str(uuid.uuid4())
-        session_date = sessions_table.get_item(Key={"id": data["sessionId"]})["Item"]["date"]
+        session_date = sessions_table.get_item(Key={"id": data["sessionId"]})["Item"][
+            "date"
+        ]
         table.put_item(
             Item={
                 "id": feedback_id,
                 "session_id": data["sessionId"],
                 "user_id": data["userId"],
                 "date": session_date,
-                "proactivity": data["users"][user]["proactivity"], # 積極性
-                "logicality": data["users"][user]["logicality"], # 論理的思考
-                "leadership": data["users"][user]["leadership"], # リーダーシップ
-                "cooperation": data["users"][user]["cooperation"], # 協力性
-                "expression": data["users"][user]["expression"], # 発信力
-                "consideration": data["users"][user]["consideration"], # 気配り
-                "comment": data["users"][user]["comment"], # コメント
+                "proactivity": data["users"][user]["proactivity"],  # 積極性
+                "logicality": data["users"][user]["logicality"],  # 論理的思考
+                "leadership": data["users"][user]["leadership"],  # リーダーシップ
+                "cooperation": data["users"][user]["cooperation"],  # 協力性
+                "expression": data["users"][user]["expression"],  # 発信力
+                "consideration": data["users"][user]["consideration"],  # 気配り
+                "comment": data["users"][user]["comment"],  # コメント
             }
         )
-    return Response(body={"message": "Feedback saved"}, status_code=201, headers=headers)
+    return Response(
+        body={"message": "Feedback saved"}, status_code=201, headers=headers
+    )
+
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, Decimal):
             return float(o)
         return super(DecimalEncoder, self).default(o)
+
 
 @app.route("/get_feedback/{user_id}", methods=["GET"], cors=cors_config)
 def get_feedback(user_id):
@@ -347,15 +361,17 @@ def get_feedback(user_id):
     feedback_by_date = defaultdict(list)
 
     for item in items:
-        date = item.pop('date')
+        date = item.pop("date")
         feedback_by_date[date].append(item)  # 日付をキーにしてフィードバックを追加
 
     # ソート（新しい日付が最初に来るように降順でソート）
-    sorted_feedback_by_date = dict(sorted(feedback_by_date.items(), key=lambda x: x[0], reverse=True))
+    sorted_feedback_by_date = dict(
+        sorted(feedback_by_date.items(), key=lambda x: x[0], reverse=True)
+    )
 
     # JSONエンコードの際にDecimalEncoderを使用
     return Response(
         body=json.dumps(sorted_feedback_by_date, cls=DecimalEncoder),
         status_code=200,
-        headers=headers
+        headers=headers,
     )
