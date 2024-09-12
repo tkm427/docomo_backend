@@ -53,7 +53,7 @@ def create_zoom_meeting():
         )
         access_token = response.json()["access_token"]
     except Exception as e:
-        raise BadRequestError(f"Failed to get access token: {e}")
+        raise BadRequestError(f"Failed to get access token: {e}, status_code: {response.status_code}, json: {response.json()}")
     
     # ミーティング作成のためのデータ
     meeting_details = {
@@ -313,22 +313,22 @@ def feedback():
     data = request.json_body
 
     table = feedbacks_table
-    for user_id in data.keys():
+    for user in data["users"].keys():
         feedback_id = str(uuid.uuid4())
         session_date = sessions_table.get_item(Key={"id": data["sessionId"]})["Item"]["date"]
         table.put_item(
             Item={
                 "id": feedback_id,
                 "session_id": data["sessionId"],
-                "user_id": user_id,
+                "user_id": data["userId"],
                 "date": session_date,
-                "proactivity": data[user_id]["proactivity"], # 積極性
-                "logicality": data[user_id]["logicality"], # 論理的思考
-                "leadership": data[user_id]["leadership"], # リーダーシップ
-                "cooperation": data[user_id]["cooperation"], # 協力性
-                "expression": data[user_id]["expression"], # 発信力
-                "consideration": data[user_id]["consideration"], # 気配り
-                "comment": data[user_id]["comment"], # コメント
+                "proactivity": data["users"][user]["proactivity"], # 積極性
+                "logicality": data["users"][user]["logicality"], # 論理的思考
+                "leadership": data["users"][user]["leadership"], # リーダーシップ
+                "cooperation": data["users"][user]["cooperation"], # 協力性
+                "expression": data["users"][user]["expression"], # 発信力
+                "consideration": data["users"][user]["consideration"], # 気配り
+                "comment": data["users"][user]["comment"], # コメント
             }
         )
     return Response(body={"message": "Feedback saved"}, status_code=201, headers=headers)
