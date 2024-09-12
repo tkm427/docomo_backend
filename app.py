@@ -4,13 +4,15 @@ from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Attr
-from chalice import Chalice, Response
+from chalice import Chalice, NotFoundError, Response
 
 dynamodb = boto3.resource(
     "dynamodb", region_name="ap-northeast-1", endpoint_url="http://localhost:8000"
 )
 app = Chalice(app_name="docomo_backend")
+headers = {}  # 要変更
 
+users_table = dynamodb.Table("Users")
 sessions_table = dynamodb.Table("Sessions")
 themes_table = dynamodb.Table("Themes")
 
@@ -113,3 +115,30 @@ def add_theme():
             "CONTENT": data["content"],
         }
     )
+
+
+@app.route("/get_zoom_url/{id}")
+def get_zoom_url(id):
+    def get_user_name(id):
+        table = users_table
+        response = table.get_item(Key={"ID": id})
+        item = response["Item"]
+        return item["NAME"]
+
+    table = sessions_table
+    response = table.get_item(Key={"ID": id})
+    item = response["Item"]
+    if ("ZOOMURL" not in item) or (item["ZOOMURL"] == ""):
+        raise NotFoundError("No Zoom URL")
+    else:
+        username = [get_user_name(id) for id in item["USERID"]]
+        return Response(
+            body={
+                "zoomUrl": item["ZOOMURL"],
+                "thema": item["THEMA"],
+                "userId": item["USERID"],
+                "userName": username,
+            },
+            status_code=200,
+            headers=headers,
+        )
