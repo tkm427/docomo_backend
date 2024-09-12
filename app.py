@@ -8,6 +8,9 @@ import random
 import requests
 import os
 import base64
+from decimal import Decimal
+import json
+from collections import defaultdict
 
 dynamodb = boto3.resource(
     "dynamodb", region_name="ap-northeast-1",
@@ -20,7 +23,7 @@ headers = {'Content-Type': 'application/json'}
 users_table = dynamodb.Table("Users")
 sessions_table = dynamodb.Table("Sessions")
 themes_table = dynamodb.Table("Themes")
-feedbacks_table = dynamodb.Table("Feedback")
+feedbacks_table = dynamodb.Table("Feedbacks")
 
 CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
 CLIENT_SECRET = os.getenv("ZOOM_CLIENT_SECRET")
@@ -328,9 +331,31 @@ def feedback():
         )
     return Response(body={"message": "Feedback saved"}, status_code=201, headers=headers)
 
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return float(o)
+        return super(DecimalEncoder, self).default(o)
+
 @app.route("/get_feedback/{user_id}", methods=["GET"], cors=cors_config)
 def get_feedback(user_id):
     table = feedbacks_table
     response = table.scan(FilterExpression=Attr("user_id").eq(user_id))
     items = response["Items"]
-    return Response(body=items, status_code=200, headers=headers)
+
+    # 日付ごとにフィードバックをグループ化
+    feedback_by_date = defaultdict(list)
+
+    for item in items:
+        date = item.pop('date')
+        feedback_by_date[date].append(item)  # 日付をキーにしてフィードバックを追加
+
+    # ソート（新しい日付が最初に来るように降順でソート）
+    sorted_feedback_by_date = dict(sorted(feedback_by_date.items(), key=lambda x: x[0], reverse=True))
+
+    # JSONエンコードの際にDecimalEncoderを使用
+    return Response(
+        body=json.dumps(sorted_feedback_by_date, cls=DecimalEncoder),
+        status_code=200,
+        headers=headers
+    )

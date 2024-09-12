@@ -5,7 +5,10 @@
     "dev": {
       "api_gateway_stage": "api",
       "environment_variables": {
-        "DB_TABLE_NAME": "Records"
+        "DB_TABLE_NAME": "Records",
+        "ZOOM_CLIENT_ID": "1dkcEM2wT9yGXJQGd3nxUg",
+        "ZOOM_CLIENT_SECRET": "I8kt3U4Dvo7VntrhHSLUsH1fIuTXBnom",
+        "ZOOM_ACCOUNT_ID": "1tn0fpr5SiudB2vK6tN6ng"
       },
       "autogen_policy": false
     }
