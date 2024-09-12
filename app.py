@@ -3,9 +3,12 @@ import boto3
 import uuid
 import bcrypt
 from boto3.dynamodb.conditions import Attr
+import datetime
+import random
 
 dynamodb = boto3.resource(
-    "dynamodb", region_name="ap-northeast-1", endpoint_url="http://localhost:8000"
+    "dynamodb", region_name="ap-northeast-1",
+    endpoint_url="http://localhost:8000"
 )
 app = Chalice(app_name="docomo_backend")
 
