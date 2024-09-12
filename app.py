@@ -58,10 +58,8 @@ def create_zoom_meeting():
     # ミーティング作成のためのデータ
     meeting_details = {
         "topic": "Group Discussion",
-        "type": 1,  # Instant meeting
         "settings": {
-            "host_video": True,
-            "participant_video": True
+            "join_before_host": True,
         }
     }
     
