@@ -296,11 +296,13 @@ def feedback():
     table = feedbacks_table
     for user_id in data.keys():
         feedback_id = str(uuid.uuid4())
+        session_date = sessions_table.get_item(Key={"id": data["sessionId"]})["Item"]["date"]
         table.put_item(
             Item={
                 "id": feedback_id,
                 "session_id": data["sessionId"],
                 "user_id": user_id,
+                "date": session_date,
                 "proactivity": data[user_id]["proactivity"], # 積極性
                 "logicality": data[user_id]["logicality"], # 論理的思考
                 "leadership": data[user_id]["leadership"], # リーダーシップ
