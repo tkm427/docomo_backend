@@ -1,23 +1,30 @@
-import random
-import uuid
-from datetime import datetime
-
+from chalice import Chalice, BadRequestError, Response, CORSConfig, NotFoundError
 import boto3
+import uuid
+import bcrypt
 from boto3.dynamodb.conditions import Attr
-from chalice import Chalice, NotFoundError, Response
 
 dynamodb = boto3.resource(
     "dynamodb", region_name="ap-northeast-1", endpoint_url="http://localhost:8000"
 )
 app = Chalice(app_name="docomo_backend")
-headers = {}  # 要変更
+
+headers = {'Content-Type': 'application/json'}
 
 users_table = dynamodb.Table("Users")
 sessions_table = dynamodb.Table("Sessions")
 themes_table = dynamodb.Table("Themes")
 
+# CORS設定
+cors_config = CORSConfig(
+    allow_origin='*',
+    allow_headers=['Content-Type', 'Authorization'],
+    max_age=600,
+    expose_headers=['Authorization'], 
+    allow_credentials=True
+)
 
-@app.route("/session", methods=["POST"])
+@app.route("/session", methods=["POST"], cors=cors_config)
 def create_or_join_session():
     request_body = app.current_request.json_body
     user_id = request_body.get("userId")
@@ -83,7 +90,94 @@ def create_or_join_session():
             "userCount": user_count,
             "message": "Joined existing session",
         }
-        return Response(body=response_body, status_code=200, headers={})
+        return Response(body=response_body, status_code=200, headers=headers)
+
+
+# ユーザー登録
+@app.route('/register', methods=['POST'], cors=cors_config)
+def register():
+    request = app.current_request.json_body
+    name = request.get('name')
+    email = request.get('email')
+    password = request.get('password')
+
+    if not name or not email or not password:
+        return Response(
+            body={'error': '名前、メールアドレス、パスワードは必須です。'},
+            status_code=400,
+            headers=headers
+        )
+
+    # メールアドレスが既に存在するかチェック
+    existing_user = users_table.get_item(Key={'email': email})
+    if 'Item' in existing_user:
+        return Response(
+            body={'error': 'このメールアドレスは既に登録されています。'},
+            status_code=400,
+            headers=headers
+        )
+
+    # パスワードをハッシュ化
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    # IDを生成
+    user_id = str(uuid.uuid4())
+
+    # ユーザー情報を保存
+    users_table.put_item(
+        Item={
+            'id': user_id,
+            'name': name,
+            'email': email,
+            'password_hash': password_hash
+        }
+    )
+
+    return Response(
+        body={'message': 'ユーザー登録が完了しました。', 'user_id': user_id},
+        status_code=201,
+        headers=headers
+    )
+
+# ユーザーログイン
+@app.route('/login', methods=['POST'], cors=cors_config)
+def login():
+    request = app.current_request.json_body
+    email = request.get('email')
+    password = request.get('password')
+
+    if not email or not password:
+        return Response(
+            body={'error': 'メールアドレスとパスワードは必須です。'},
+            status_code=400,
+            headers=headers
+        )
+
+    # メールアドレスでユーザーを検索
+    response = users_table.get_item(Key={'email': email})
+    user = response.get('Item')
+
+    if not user:
+        return Response(
+            body={'error': 'メールアドレスまたはパスワードが正しくありません。'},
+            status_code=404,
+            headers=headers
+        )
+
+    # パスワードの確認
+    if not bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+        return Response(
+            body={'error': 'メールアドレスまたはパスワードが正しくありません。'},
+            status_code=400,
+            headers=headers
+        )
+
+    return Response(
+        body={'user_id': user['id']},
+        status_code=200,
+        headers=headers
+    )
+
 
 
 def get_random_theme():
@@ -92,7 +186,7 @@ def get_random_theme():
     return random.choice(themes) if themes else None
 
 
-@app.route("/end_session/{session_id}", methods=["GET"])
+@app.route("/end_session/{session_id}", methods=["GET"], cors=cors_config)
 def end_session():
     session_id = app.current_request.query_params.get("session_id")
 
@@ -100,10 +194,10 @@ def end_session():
     session["ISEND"] = True
     sessions_table.put_item(Item=session)
     response_body = {"message": "Session ended"}
-    return Response(body=response_body, status_code=200, headers={})
+    return Response(body=response_body, status_code=200, headers=headers)
 
 
-@app.route("/add_theme", methods=["POST"])
+@app.route("/add_theme", methods=["POST"], cors=cors_config)
 def add_theme():
     request = app.current_request
     data = request.json_body
@@ -117,7 +211,7 @@ def add_theme():
     )
 
 
-@app.route("/get_zoom_url/{id}")
+@app.route("/get_zoom_url/{id}", methods=["GET"], cors=cors_config)
 def get_zoom_url(id):
     def get_user_name(id):
         table = users_table

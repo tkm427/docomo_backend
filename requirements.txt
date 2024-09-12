@@ -1,2 +1,2 @@
-chalice
 boto3
+bcrypt
