@@ -58,10 +58,8 @@ def create_zoom_meeting():
     # ミーティング作成のためのデータ
     meeting_details = {
         "topic": "Group Discussion",
-        "type": 1,  # Instant meeting
         "settings": {
-            "host_video": True,
-            "participant_video": True
+            "join_before_host": True,
         }
     }
     
@@ -292,20 +290,17 @@ def get_zoom_url(id):
 
     theme = themes_table.get_item(Key={'id': item["theme_id"]})
     theme_content = theme["Item"]["content"]
-    if ("zoom_url" not in item) or (item["zoom_url"] == ""):
-        raise NotFoundError("No Zoom URL")
-    else:
-        username = [get_user_name(id) for id in item["user_id"]]
-        return Response(
-            body={
-                "zoomUrl": item["zoom_url"],
-                "theme": theme_content,
-                "userId": item["user_id"],
-                "userName": username,
-            },
-            status_code=200,
-            headers=headers,
-        )
+    username = [get_user_name(id) for id in item["user_id"]]
+    return Response(
+        body={
+            "zoomUrl": item["zoom_url"],
+            "theme": theme_content,
+            "userId": item["user_id"],
+            "userName": username,
+        },
+        status_code=200,
+        headers=headers,
+    )
 
 @app.route("/feedback", methods=["POST"], cors=cors_config)
 def feedback():
