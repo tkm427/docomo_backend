@@ -262,8 +262,8 @@ def get_random_theme():
 
 
 @app.route("/end_session/{session_id}", methods=["GET"], cors=cors_config)
-def end_session():
-    session_id = app.current_request.query_params.get("session_id")
+def end_session(session_id):
+    # session_id = app.current_request.query_params.get("session_id")
 
     session = sessions_table.get_item(Key={"id": session_id})["Item"]
     session["is_end"] = True
