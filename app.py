@@ -5,6 +5,8 @@ import bcrypt
 from boto3.dynamodb.conditions import Attr, Key
 from datetime import datetime
 import random
+import requests
+import os
 
 dynamodb = boto3.resource(
     "dynamodb", region_name="ap-northeast-1",
@@ -17,6 +19,9 @@ headers = {'Content-Type': 'application/json'}
 users_table = dynamodb.Table("Users")
 sessions_table = dynamodb.Table("Sessions")
 themes_table = dynamodb.Table("Themes")
+feedbacks_table = dynamodb.Table("Feedback")
+
+ZOOM_ACCESS_TOKEN = os.environ.get("ZOOM_ACCESS_TOKEN")
 
 # CORS設定
 cors_config = CORSConfig(
@@ -26,6 +31,38 @@ cors_config = CORSConfig(
     expose_headers=['Authorization'], 
     allow_credentials=True
 )
+
+def create_zoom_meeting():
+    # Zoom API エンドポイント
+    zoom_api_url = "https://api.zoom.us/v2/users/me/meetings"
+    
+    # Zoom API アクセストークン
+    access_token = "ZOOM_ACCESS_TOKEN"
+    
+    # ミーティング作成のためのデータ
+    meeting_details = {
+        "topic": "Group Discussion",
+        "type": 1,  # Instant meeting
+        "settings": {
+            "host_video": True,
+            "participant_video": True
+        }
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    response = requests.post(zoom_api_url, headers=headers, json=meeting_details)
+    
+    if response.status_code == 201:
+        meeting_info = response.json()
+        return meeting_info["join_url"]
+    else:
+        print(f"Error: {response.status_code}")
+        print(response.json())
+        return None
 
 @app.route("/session", methods=["POST"], cors=cors_config)
 def create_or_join_session():
@@ -250,3 +287,34 @@ def get_zoom_url(id):
             status_code=200,
             headers=headers,
         )
+
+@app.route("/feedback", methods=["POST"], cors=cors_config)
+def feedback():
+    request = app.current_request
+    data = request.json_body
+
+    table = feedbacks_table
+    for user_id in data.keys():
+        feedback_id = str(uuid.uuid4())
+        table.put_item(
+            Item={
+                "id": feedback_id,
+                "session_id": data["sessionId"],
+                "user_id": user_id,
+                "proactivity": data[user_id]["proactivity"], # 積極性
+                "logicality": data[user_id]["logicality"], # 論理的思考
+                "leadership": data[user_id]["leadership"], # リーダーシップ
+                "cooperation": data[user_id]["cooperation"], # 協力性
+                "expression": data[user_id]["expression"], # 発信力
+                "consideration": data[user_id]["consideration"], # 気配り
+                "comment": data[user_id]["comment"], # コメント
+            }
+        )
+    return Response(body={"message": "Feedback saved"}, status_code=201, headers=headers)
+
+@app.route("/get_feedback/{user_id}", methods=["GET"], cors=cors_config)
+def get_feedback(user_id):
+    table = feedbacks_table
+    response = table.scan(FilterExpression=Attr("user_id").eq(user_id))
+    items = response["Items"]
+    return Response(body=items, status_code=200, headers=headers)
