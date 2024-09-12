@@ -3,7 +3,11 @@
   "app_name": "docomo_backend",
   "stages": {
     "dev": {
-      "api_gateway_stage": "api"
+      "api_gateway_stage": "api",
+      "environment_variables": {
+        "DB_TABLE_NAME": "Records"
+      },
+      "autogen_policy": false
     }
   }
 }
