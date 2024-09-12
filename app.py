@@ -7,6 +7,7 @@ from datetime import datetime
 import random
 import requests
 import os
+import base64
 
 dynamodb = boto3.resource(
     "dynamodb", region_name="ap-northeast-1",
@@ -21,7 +22,9 @@ sessions_table = dynamodb.Table("Sessions")
 themes_table = dynamodb.Table("Themes")
 feedbacks_table = dynamodb.Table("Feedback")
 
-ZOOM_ACCESS_TOKEN = os.environ.get("ZOOM_ACCESS_TOKEN")
+CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
+CLIENT_SECRET = os.getenv("ZOOM_CLIENT_SECRET")
+ACCOUNT_ID = os.getenv("ZOOM_ACCOUNT_ID")
 
 # CORS設定
 cors_config = CORSConfig(
@@ -36,8 +39,21 @@ def create_zoom_meeting():
     # Zoom API エンドポイント
     zoom_api_url = "https://api.zoom.us/v2/users/me/meetings"
     
-    # Zoom API アクセストークン
-    access_token = "ZOOM_ACCESS_TOKEN"
+    # Zoom API アクセストークン発行
+    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    b64_auth_str = base64.b64encode(auth_str.encode()).decode()
+    headers = {
+        "Authorization": f"Basic {b64_auth_str}",
+    }
+
+    try:
+        response = requests.post(
+            f"https://zoom.us/oauth/token?grant_type=account_credentials&account_id={ACCOUNT_ID}",
+            headers=headers
+        )
+        access_token = response.json()["access_token"]
+    except Exception as e:
+        raise BadRequestError(f"Failed to get access token: {e}")
     
     # ミーティング作成のためのデータ
     meeting_details = {
@@ -116,7 +132,7 @@ def create_or_join_session():
 
         if user_count == 5:
             # Create Zoom URL and update session
-            zoom_url = "test_zoom_url"
+            zoom_url = create_zoom_meeting()
             update_expression += ", zoom_url = :zoom"
             expression_values[":zoom"] = zoom_url
 
