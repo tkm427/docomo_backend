@@ -273,6 +273,9 @@ def get_zoom_url(id):
     table = sessions_table
     response = table.get_item(Key={"id": id})
     item = response["Item"]
+
+    theme = themes_table.get_item(Key={'id': item["theme_id"]})
+    theme_content = theme["Item"]["content"]
     if ("zoom_url" not in item) or (item["zoom_url"] == ""):
         raise NotFoundError("No Zoom URL")
     else:
@@ -280,7 +283,7 @@ def get_zoom_url(id):
         return Response(
             body={
                 "zoomUrl": item["zoom_url"],
-                "theme": item["theme"],
+                "theme": theme_content,
                 "userId": item["user_id"],
                 "userName": username,
             },
